@@ -49,11 +49,6 @@ services:
       context: ./fronend-main
     restart: unless-stopped
 
-  frontend-admin:
-    build:
-      context: ./frontend-admin
-    restart: unless-stopped
-
   gateway:
     image: nginx:stable-alpine
     restart: unless-stopped
@@ -61,8 +56,6 @@ services:
       backend:
         condition: service_started
       frontend-main:
-        condition: service_started
-      frontend-admin:
         condition: service_started
     ports:
       - "${HTTP_PUBLISHED_PORT:-80}:80"
