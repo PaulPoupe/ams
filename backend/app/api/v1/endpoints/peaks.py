@@ -25,7 +25,7 @@ def create_peak(
     
     db_obj = models.Peak(
         device_id=x_device_id,
-        peak_time=peak_in.peak_time
+        peak_time_ns=peak_in.peak_time_ns
     )
     db.add(db_obj)
     db.commit()

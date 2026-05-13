@@ -50,7 +50,7 @@ def read_suspicious_incidents(
     """
     Returns a list of all suspicious incidents with their description, coordinates and creation time.
     """
-    incidents = db.query(models.SuspiciousIncident).order_by(models.SuspiciousIncident.created_at.desc()).offset(skip).limit(limit).all()
+    incidents = db.query(models.SuspiciousIncident).order_by(models.SuspiciousIncident.created_at_ns.desc()).offset(skip).limit(limit).all()
     for incident in incidents:
         if incident.geom:
             point = to_shape(incident.geom)

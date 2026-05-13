@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdbool.h>
 #include "pico/cyw43_arch.h"
 #include "wifi_service.h"
 
@@ -24,4 +25,9 @@ int connect_to_wifi(const char *ssid, const char *password)
         return -1;
     }
     return 0;
+}
+
+bool is_wifi_connected(void)
+{
+    return cyw43_tcpip_link_status(&cyw43_state, CYW43_ITF_STA) == CYW43_LINK_UP;
 }

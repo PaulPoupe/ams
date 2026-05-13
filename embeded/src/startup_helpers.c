@@ -2,14 +2,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include "pico/stdlib.h"
+#include "pico/stdio_usb.h"
 #include "device_config.h"
 #include "startup_helpers.h"
 
 typedef enum
 {
-    START_ACTION_RUN = 1,
-    START_ACTION_CHANGE_SETTINGS = 2
-} start_action_t;
+    START_MENU_START_NORMAL = 1,
+    START_MENU_EDIT_SETTINGS = 2,
+    START_MENU_START_DIAGNOSTICS = 3
+} start_menu_action_t;
 
 static bool read_line(char *out, size_t out_size)
 {
@@ -73,55 +75,16 @@ static bool prompt_required_field(const char *label, char *out, size_t out_size)
     }
 }
 
-static bool prompt_int32_field(const char *label, int32_t *out, int32_t default_value, int32_t min_value)
-{
-    if (out == NULL)
-    {
-        return false;
-    }
-
-    char answer[32];
-    while (true)
-    {
-        printf("%s [%ld]: ", label, (long)default_value);
-        if (!read_line(answer, sizeof(answer)))
-        {
-            return false;
-        }
-
-        if (answer[0] == '\0')
-        {
-            *out = default_value;
-            return true;
-        }
-
-        char *end = NULL;
-        long value = strtol(answer, &end, 10);
-        if (end == answer || *end != '\0')
-        {
-            printf("Invalid number.\n");
-            continue;
-        }
-        if (value < (long)min_value || value > (long)INT32_MAX)
-        {
-            printf("Value must be in range [%ld..%ld].\n", (long)min_value, (long)INT32_MAX);
-            continue;
-        }
-
-        *out = (int32_t)value;
-        return true;
-    }
-}
-
-static start_action_t prompt_start_action(void)
+static start_menu_action_t prompt_start_action(void)
 {
     char answer[8];
     while (true)
     {
-        printf("Choose action:\n");
-        printf("1 - Start\n");
-        printf("2 - Change all settings\n");
-        printf("Select [1/2]: ");
+        printf("Startup menu:\n");
+        printf("1 - Start Normal Mode\n");
+        printf("2 - Edit Settings\n");
+        printf("3 - Start Diagnostics Mode\n");
+        printf("Select [1/2/3]: ");
 
         if (!read_line(answer, sizeof(answer)))
         {
@@ -130,11 +93,15 @@ static start_action_t prompt_start_action(void)
 
         if (answer[0] == '1' && answer[1] == '\0')
         {
-            return START_ACTION_RUN;
+            return START_MENU_START_NORMAL;
         }
         if (answer[0] == '2' && answer[1] == '\0')
         {
-            return START_ACTION_CHANGE_SETTINGS;
+            return START_MENU_EDIT_SETTINGS;
+        }
+        if (answer[0] == '3' && answer[1] == '\0')
+        {
+            return START_MENU_START_DIAGNOSTICS;
         }
 
         printf("Invalid choice.\n");
@@ -269,7 +236,19 @@ void print_current_settings(const device_config_t *config,
     printf("=============================\n\n");
 }
 
-void resolve_startup_config(device_config_t *config, bool has_config)
+const char *startup_run_mode_label(startup_run_mode_t mode)
+{
+    switch (mode)
+    {
+    case STARTUP_RUN_MODE_DIAGNOSTICS:
+        return "Diagnostics Mode";
+    case STARTUP_RUN_MODE_NORMAL:
+    default:
+        return "Normal Mode";
+    }
+}
+
+startup_run_mode_t resolve_startup_config(device_config_t *config, bool has_config, bool usb_console_connected)
 {
     if (config == NULL)
     {
@@ -279,24 +258,48 @@ void resolve_startup_config(device_config_t *config, bool has_config)
     if (!has_config)
     {
         printf("No saved settings found.\n");
+        if (!usb_console_connected)
+        {
+            halt_forever_with_message("No saved settings and no USB console connected. Connect over USB to configure the device.");
+        }
+        printf("Entering Setup Mode.\n");
         if (!collect_initial_config(config))
         {
             halt_forever_with_message("Input failed. Reboot device and try again.");
         }
         printf("Settings saved to flash.\n");
-        return;
+        printf("Starting Diagnostics Mode for first-time bring-up.\n");
+        return STARTUP_RUN_MODE_DIAGNOSTICS;
     }
 
     printf("Saved settings found.\n");
     print_saved_identity(config);
 
-    start_action_t action = prompt_start_action();
-    if (action == START_ACTION_CHANGE_SETTINGS)
+    if (!usb_console_connected)
     {
-        if (!update_config_from_prompt(config))
+        printf("USB console not connected. Starting Normal Mode.\n");
+        return STARTUP_RUN_MODE_NORMAL;
+    }
+
+    while (true)
+    {
+        start_menu_action_t action = prompt_start_action();
+        if (action == START_MENU_EDIT_SETTINGS)
         {
-            halt_forever_with_message("Input failed. Reboot device and try again.");
+            printf("Entering Setup Mode.\n");
+            if (!update_config_from_prompt(config))
+            {
+                halt_forever_with_message("Input failed. Reboot device and try again.");
+            }
+            printf("Settings updated.\n");
+            continue;
         }
-        printf("Settings updated.\n");
+
+        if (action == START_MENU_START_DIAGNOSTICS)
+        {
+            return STARTUP_RUN_MODE_DIAGNOSTICS;
+        }
+
+        return STARTUP_RUN_MODE_NORMAL;
     }
 }

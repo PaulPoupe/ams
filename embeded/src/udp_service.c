@@ -91,6 +91,7 @@ bool udp_send_audio_mono16(const char *device_id, const int16_t *samples, size_t
     {
         static uint32_t udp_err_count = 0;
         udp_err_count++;
+        g_udp_ready = false;
         if ((udp_err_count % 50u) == 1u)
         {
             printf("udp_send failed: %d\n", err);

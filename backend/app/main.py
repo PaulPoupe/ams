@@ -4,12 +4,11 @@ from fastapi.staticfiles import StaticFiles
 import os
 from app.api.v1.api import api_router
 from app.core.config import settings
-from app.db.session import engine
-from app.models import Base
+from app.db.schema import initialize_database_schema
 
 from app.udp_server.server import start_udp_server_thread
 
-Base.metadata.create_all(bind=engine)
+initialize_database_schema()
 
 import logging
 import sys

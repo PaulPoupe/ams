@@ -6,8 +6,15 @@
 #include <stdint.h>
 #include "device_config.h"
 
+typedef enum
+{
+    STARTUP_RUN_MODE_NORMAL = 0,
+    STARTUP_RUN_MODE_DIAGNOSTICS
+} startup_run_mode_t;
+
 bool save_config_or_log(const device_config_t *config, const char *error_message);
-void resolve_startup_config(device_config_t *config, bool has_config);
+startup_run_mode_t resolve_startup_config(device_config_t *config, bool has_config, bool usb_console_connected);
+const char *startup_run_mode_label(startup_run_mode_t mode);
 
 void print_current_settings(const device_config_t *config,
                             int server_port,

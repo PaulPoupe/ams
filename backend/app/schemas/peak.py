@@ -1,9 +1,7 @@
 from pydantic import BaseModel
-from datetime import datetime
-from typing import Optional
 
 class PeakBase(BaseModel):
-    peak_time: datetime
+    peak_time_ns: int
 
 class PeakCreate(PeakBase):
     pass
@@ -11,7 +9,7 @@ class PeakCreate(PeakBase):
 class PeakInDBBase(PeakBase):
     id: int
     device_id: str
-    received_at: datetime
+    received_at_ns: int
 
     class Config:
         from_attributes = True

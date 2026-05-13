@@ -4,7 +4,6 @@ from sqlalchemy.orm import Session
 from geoalchemy2.shape import to_shape, from_shape
 from shapely.geometry import Point
 import uuid
-from datetime import datetime
 from app.db.session import get_db
 from app import schemas, models
 
@@ -140,22 +139,3 @@ def delete_location(
     db.delete(db_obj)
     db.commit()
     return db_obj
-
-@router.post("/{id}/init", response_model=schemas.DeviceInitResponse, summary="Initialize device and sync time")
-def init_device(
-    *,
-    db: Session = Depends(get_db),
-    id: str
-) -> Any:
-    """
-    Initializes a device and returns the current server time for synchronization.
-    If the device is not registered, it returns 404.
-    """
-    db_obj = db.query(models.Location).filter(models.Location.id == id).first()
-    if not db_obj:
-        raise HTTPException(status_code=404, detail="Device not found")
-    
-    return {
-        "device_id": id,
-        "server_time": datetime.now()
-    }

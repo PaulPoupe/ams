@@ -1,0 +1,51 @@
+﻿#ifndef SERVER_HEALTH_H
+#define SERVER_HEALTH_H
+
+#include <stdbool.h>
+
+#include "device_config.h"
+#include "lwip/apps/http_client.h"
+#include "pico/time.h"
+#include "power_meter_service.h"
+
+#define SERVER_HEALTH_HTTP_PORT 80
+
+typedef enum
+{
+    SERVER_HEALTH_REQUEST_NONE = 0,
+    SERVER_HEALTH_REQUEST_REPORT
+} server_health_request_kind_t;
+
+typedef enum
+{
+    SERVER_HEALTH_STATUS_PENDING = 0,
+    SERVER_HEALTH_STATUS_CONNECTED,
+    SERVER_HEALTH_STATUS_ERROR
+} server_health_connection_status_t;
+
+typedef struct
+{
+    ip_addr_t server_addr;
+    httpc_connection_t connection_settings;
+    httpc_state_t *connection;
+    absolute_time_t next_report_at;
+    char server_ip[DEVICE_CONFIG_SERVER_IP_MAX + 1];
+    char device_id[DEVICE_CONFIG_ID_MAX + 1];
+    server_health_request_kind_t active_request;
+    server_health_connection_status_t connection_status;
+    bool server_addr_valid;
+    bool request_in_flight;
+    bool microphone_active;
+} server_health_service_t;
+
+void server_health_service_init(server_health_service_t *service, const device_config_t *config);
+void server_health_service_set_microphone_active(server_health_service_t *service, bool active);
+void server_health_service_poll(server_health_service_t *service,
+                                const power_meter_service_t *power_meter_service,
+                                bool wifi_connected,
+                                bool udp_connected,
+                                uint16_t audio_queue_depth,
+                                uint32_t audio_dropped_chunks);
+server_health_connection_status_t server_health_service_connection_status(const server_health_service_t *service);
+
+#endif

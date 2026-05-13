@@ -51,7 +51,7 @@ def process_recent_peaks(db: Session, window_seconds: float = 0.5):
     peaks = (
         db.query(models.Peak)
         .filter(models.Peak.processed.is_(False))
-        .order_by(models.Peak.peak_time.desc())
+        .order_by(models.Peak.peak_time_ns.desc())
         .limit(50)
         .all()
     )
@@ -68,14 +68,14 @@ def process_recent_peaks(db: Session, window_seconds: float = 0.5):
         current_event_peaks = [peaks[i]]
         processed_ids.add(peaks[i].id)
         
-        ref_time = peaks[i].peak_time
+        ref_time_ns = peaks[i].peak_time_ns
         
         for j in range(i + 1, len(peaks)):
             if peaks[j].id in processed_ids:
                 continue
             
-            diff = abs((peaks[j].peak_time - ref_time).total_seconds())
-            if diff <= window_seconds:
+            diff_seconds = abs(peaks[j].peak_time_ns - ref_time_ns) / 1_000_000_000.0
+            if diff_seconds <= window_seconds:
                 # Check if there is already a peak from this device in the current event
                 if any(p.device_id == peaks[j].device_id for p in current_event_peaks):
                     continue
@@ -108,7 +108,7 @@ def perform_triangulation_for_event(db: Session, event_peaks: List[models.Peak])
         mx, my = transformer_to_metric.transform(point.x, point.y)
         mic_coords_metric.append([mx, my])
         # Time in seconds
-        arrival_times.append(peak.peak_time.timestamp())
+        arrival_times.append(peak.peak_time_ns / 1_000_000_000.0)
         
     if len(mic_coords_metric) < 3:
         return

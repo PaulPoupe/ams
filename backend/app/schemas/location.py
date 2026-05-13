@@ -1,7 +1,6 @@
 from pydantic import BaseModel
 from pydantic import Field
 from typing import Optional
-from datetime import datetime
 
 class LocationBase(BaseModel):
     name: str
@@ -28,6 +27,9 @@ class Location(LocationInDBBase):
     lat: Optional[float] = None
     lon: Optional[float] = None
 
-class DeviceInitResponse(BaseModel):
+class DeviceTimeSyncResponse(BaseModel):
     device_id: str
-    server_time: datetime
+    server_received_epoch_ns: int
+    server_transmit_epoch_ns: int
+    timezone_name: str
+    timezone_offset_seconds: int

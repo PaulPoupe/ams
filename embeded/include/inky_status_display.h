@@ -1,0 +1,21 @@
+#ifndef INKY_STATUS_DISPLAY_H
+#define INKY_STATUS_DISPLAY_H
+
+#include "device_status.h"
+#include "device_config.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void inky_status_display_reset(void);
+void inky_status_display_update(const device_config_t *config,
+                                const device_status_snapshot_t *status,
+                                int raw_audio_sample_rate_hz,
+                                int audio_downsample_factor);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

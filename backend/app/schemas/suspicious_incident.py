@@ -1,5 +1,4 @@
 from pydantic import BaseModel
-from datetime import datetime
 from typing import Optional
 
 class SuspiciousIncidentBase(BaseModel):
@@ -11,7 +10,7 @@ class SuspiciousIncidentCreate(SuspiciousIncidentBase):
 
 class SuspiciousIncidentInDBBase(SuspiciousIncidentBase):
     id: int
-    created_at: datetime
+    created_at_ns: int
 
     class Config:
         from_attributes = True

@@ -5,7 +5,8 @@
 #include "hardware/dma.h"
 #include "i2s.h"
 
-static const uint SEL_PIN = 4;
+static const uint SEL_PIN = 3;
+static const uint SEL_LEVEL = 1;
 
 static __attribute__((aligned(8))) pio_i2s g_i2s;
 static volatile microphone_buffer_callback_t g_buffer_callback = NULL;
@@ -42,16 +43,16 @@ void microphone_init(void)
     // 132 MHz gives clean dividers for common I2S rates such as 48 kHz.
     set_sys_clock_khz(132000, true);
 
-    // SEL low selects one fixed channel mode (equivalent to tying SEL to GND).
+    // Keep SEL high; diagnostics show this appears as capture slot 0 in this I2S pipeline.
     gpio_init(SEL_PIN);
     gpio_set_dir(SEL_PIN, GPIO_OUT);
-    gpio_put(SEL_PIN, 0);
+    gpio_put(SEL_PIN, SEL_LEVEL);
 
     i2s_config mic_cfg = i2s_config_default;
     mic_cfg.sck_enable = false;
-    mic_cfg.dout_pin = 6; // Required by sync init; keep this GPIO unconnected.
-    mic_cfg.din_pin = 1;
-    mic_cfg.clock_pin_base = 2;
+    mic_cfg.dout_pin = 12; // Required by sync init; keep this GPIO unconnected.
+    mic_cfg.din_pin = 0;
+    mic_cfg.clock_pin_base = 1;
 
     i2s_program_start_synched(pio0, &mic_cfg, dma_i2s_in_handler, &g_i2s);
 }

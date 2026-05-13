@@ -140,6 +140,16 @@ class PacketHandler:
             else:
                 audio_samples = payload
 
+            if len(audio_samples) % 2 != 0:
+                logger.warning(
+                    "Odd PCM16 payload size from device %s (%s): payload_bytes=%d audio_bytes=%d. Dropping trailing byte.",
+                    device_id,
+                    client_address,
+                    len(payload),
+                    len(audio_samples),
+                )
+                audio_samples = audio_samples[:-1]
+
             processor.write(audio_samples)
 
             # Periodic analysis check
