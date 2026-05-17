@@ -1,24 +1,68 @@
-const fallbackSensorsRaw = [
-  { id: 'node-01', lat: 52.222, lon: 21.007, name: 'Node 01 - Politechnika', battery: 85, tag: 'PW' },
-  { id: 'node-02', lat: 52.225, lon: 21.015, name: 'Node 02 - City Center', battery: 92, tag: 'CTR' },
-  { id: 'node-03', lat: 52.218, lon: 21.012, name: 'Node 03 - Plac Zbawiciela', battery: 45, tag: 'PZ' },
-  { id: 'node-04', lat: 52.228, lon: 21.002, name: 'Node 04 - Central Station', battery: 78, tag: 'CNTR' },
-  { id: 'node-05', lat: 52.215, lon: 21, name: 'Node 05 - Koszyki', battery: 12, tag: 'KSZ' },
-];
-
-const clampBattery = (value, fallback) => {
+const clampBattery = (value) => {
   const parsed = Number(value);
 
   if (!Number.isFinite(parsed)) {
-    return fallback;
+    return null;
   }
 
   return Math.min(100, Math.max(0, Math.round(parsed)));
 };
 
+const toNumberOrNull = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const nsToIso = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  try {
+    const milliseconds = BigInt(String(value)) / 1_000_000n;
+    return new Date(Number(milliseconds)).toISOString();
+  } catch {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? new Date(parsed / 1_000_000).toISOString() : null;
+  }
+};
+
+const mapLatestHealth = (rawHealth) => {
+  if (!rawHealth) {
+    return null;
+  }
+
+  return {
+    receivedAt: nsToIso(rawHealth.received_at_ns),
+    statusMessage: rawHealth.status_message || null,
+    busVoltageV: toNumberOrNull(rawHealth.bus_voltage_v),
+    shuntVoltageMv: toNumberOrNull(rawHealth.shunt_voltage_mv),
+    currentMa: toNumberOrNull(rawHealth.current_ma),
+    powerMw: toNumberOrNull(rawHealth.power_mw),
+    computedPowerMw: toNumberOrNull(rawHealth.computed_power_mw),
+    wifiConnected: rawHealth.wifi_connected,
+    microphoneActive: rawHealth.microphone_active,
+    ina219Online: rawHealth.ina219_online,
+    audioQueueDepth: toNumberOrNull(rawHealth.audio_queue_depth),
+    audioDroppedChunks: toNumberOrNull(rawHealth.audio_dropped_chunks),
+  };
+};
+
+const mapLatestTimeSync = (rawTimeSync) => {
+  if (!rawTimeSync) {
+    return null;
+  }
+
+  return {
+    id: Number(rawTimeSync.id),
+    createdAt: nsToIso(rawTimeSync.created_at_ns),
+    serverReceivedAt: nsToIso(rawTimeSync.server_received_epoch_ns),
+    serverTransmitAt: nsToIso(rawTimeSync.server_transmit_epoch_ns),
+  };
+};
+
 export function mapSensor(rawSensor, index = 0) {
-  const fallbackBattery = Math.max(28, 94 - index * 12);
-  const battery = clampBattery(rawSensor.battery, fallbackBattery);
+  const battery = clampBattery(rawSensor.battery);
   const lat = Number(rawSensor.lat);
   const lng = Number(rawSensor.lon ?? rawSensor.lng);
 
@@ -29,19 +73,19 @@ export function mapSensor(rawSensor, index = 0) {
     lat,
     lng,
     battery,
-    status: rawSensor.status || (battery <= 20 ? 'Low Battery' : 'Online'),
+    status: rawSensor.status || (battery !== null && battery <= 20 ? 'Low Battery' : 'Registered'),
     order: index + 1,
+    latestHealth: mapLatestHealth(rawSensor.latest_health),
+    latestTimeSync: mapLatestTimeSync(rawSensor.latest_time_sync),
   };
 }
-
-export const FALLBACK_SENSORS = fallbackSensorsRaw.map(mapSensor);
 
 export function isSensorLocated(sensor) {
   return Number.isFinite(sensor.lat) && Number.isFinite(sensor.lng);
 }
 
 export function getSensorTone(sensor) {
-  if (sensor.status !== 'Online' || sensor.battery <= 20) {
+  if (sensor.battery !== null && sensor.battery <= 20) {
     return 'warning';
   }
 
@@ -60,4 +104,12 @@ export function formatSensorCode(sensor) {
   }
 
   return compactId.slice(0, 10) || 'NODE';
+}
+
+export function getSensorLocationSummary(sensor) {
+  if (sensor.name && sensor.tag) {
+    return `${sensor.name} (${sensor.tag})`;
+  }
+
+  return sensor.name || sensor.tag || 'Registered acoustic device';
 }

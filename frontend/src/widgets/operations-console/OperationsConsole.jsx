@@ -1,151 +1,190 @@
-import { useMemo, useState } from 'react';
-import { appConfig, isMapConfigured } from '@/app/config/env';
+import { Settings } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { appConfig } from '@/app/config/env';
 import { useIncidentFeed } from '@/entities/incident/model/useIncidentFeed';
+import { useIncidentNotifications } from '@/entities/incident/model/useIncidentNotifications';
 import { useSensors } from '@/entities/sensor/model/useSensors';
-import { useSimulationController } from '@/features/simulation/model/useSimulationController';
-import { useLiveAudioLevel } from '@/features/telemetry/model/useLiveAudioLevel';
-import { DashboardHeader } from '@/widgets/dashboard/DashboardHeader';
-import { HistoryPanel } from '@/widgets/dashboard/HistoryPanel';
-import { IncidentSummaryPanel } from '@/widgets/dashboard/IncidentSummaryPanel';
-import { NotificationStack } from '@/widgets/dashboard/NotificationStack';
+import { SensorDetailsDrawer } from '@/entities/sensor/ui/SensorDetailsDrawer';
+import { listDeviceSoundEvents } from '@/entities/sound-event/api/soundEventApi';
 import { OperationsMap } from '@/widgets/operations-map/OperationsMap';
-import { SensorDetailsPanel } from '@/widgets/dashboard/SensorDetailsPanel';
-import { SystemHealthPanel } from '@/widgets/dashboard/SystemHealthPanel';
+import { NotificationStack } from '@/widgets/operations-notifications/NotificationStack';
 
-function buildTimelineItems(simulationHistory, suspiciousIncidents) {
-  const simulationItems = simulationHistory.map((incident) => ({
-    id: `simulation-${incident.id}`,
-    title: incident.classification,
-    subtitle: `${incident.confidence}% confidence, ${incident.activeSensors.length} nodes involved`,
-    timestamp: incident.createdAt,
-    tone: 'danger',
-    origin: 'Simulation',
-  }));
+const HIDDEN_INCIDENTS_STORAGE_KEY = 'ams.operations.hiddenIncidentKeys';
 
-  const backendItems = suspiciousIncidents.map((incident) => ({
-    id: `backend-${incident.id}`,
-    title: incident.classification,
-    subtitle: incident.description,
-    timestamp: incident.createdAt,
-    tone: 'warning',
-    origin: 'Backend feed',
-  }));
+const getIncidentVisibilityKey = (incident) => `${incident.id}:${incident.createdAt}`;
 
-  return [...simulationItems, ...backendItems]
-    .sort((left, right) => new Date(right.timestamp) - new Date(left.timestamp))
-    .slice(0, appConfig.simulation.historyLimit + 4);
-}
+const getIncidentNotificationId = (incident) => `${incident.id}-${incident.createdAt}`;
+
+const readHiddenIncidentKeys = () => {
+  if (typeof window === 'undefined') {
+    return new Set();
+  }
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(HIDDEN_INCIDENTS_STORAGE_KEY) || '[]');
+    return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+  } catch {
+    return new Set();
+  }
+};
+
+const writeHiddenIncidentKeys = (incidentKeys) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(HIDDEN_INCIDENTS_STORAGE_KEY, JSON.stringify([...incidentKeys]));
+};
 
 export function OperationsConsole({ onOpenAdmin }) {
   const [viewState, setViewState] = useState(appConfig.mapView);
+  const [selectedIncidentId, setSelectedIncidentId] = useState(null);
   const [selectedSensorId, setSelectedSensorId] = useState(null);
-  const [hoveredIncidentId, setHoveredIncidentId] = useState(null);
+  const [hiddenIncidentKeys, setHiddenIncidentKeys] = useState(readHiddenIncidentKeys);
+  const [soundEventsState, setSoundEventsState] = useState({
+    error: null,
+    isLoading: false,
+    items: [],
+  });
 
   const {
-    error: incidentsError,
     incidents: suspiciousIncidents,
     isLoading: incidentsLoading,
-    lastUpdated,
   } = useIncidentFeed();
   const {
-    error: sensorsError,
-    isLoading: sensorsLoading,
     sensors,
-    source: sensorSource,
   } = useSensors();
-  const liveAudioLevel = useLiveAudioLevel({
-    intervalMs: appConfig.intervals.telemetryMs,
-    minDb: appConfig.simulation.minDb,
-    maxDb: appConfig.simulation.maxDb,
-  });
-  const simulation = useSimulationController({ sensors });
+  const visibleIncidents = useMemo(
+    () => suspiciousIncidents.filter((incident) => !hiddenIncidentKeys.has(getIncidentVisibilityKey(incident))),
+    [hiddenIncidentKeys, suspiciousIncidents],
+  );
+  const {
+    dismissNotification,
+    notifications,
+  } = useIncidentNotifications(visibleIncidents, { isLoading: incidentsLoading });
 
+  const selectedIncident = useMemo(
+    () => visibleIncidents.find((incident) => incident.id === selectedIncidentId) || null,
+    [selectedIncidentId, visibleIncidents],
+  );
   const selectedSensor = useMemo(
     () => sensors.find((sensor) => sensor.id === selectedSensorId) || null,
     [selectedSensorId, sensors],
   );
 
-  const focusIncident = simulation.activeIncident || suspiciousIncidents[0] || null;
-  const timelineItems = useMemo(
-    () => buildTimelineItems(simulation.history, suspiciousIncidents),
-    [simulation.history, suspiciousIncidents],
-  );
+  const loadSelectedSensorEvents = useCallback(async (deviceId, options = {}) => {
+    if (!deviceId) {
+      setSoundEventsState({ error: null, isLoading: false, items: [] });
+      return;
+    }
 
-  const handleMapClick = (lngLat) => {
+    setSoundEventsState((currentState) => ({
+      ...currentState,
+      error: null,
+      isLoading: true,
+    }));
+
+    try {
+      const items = await listDeviceSoundEvents(deviceId, {
+        limit: 20,
+        signal: options.signal,
+      });
+
+      setSoundEventsState({
+        error: null,
+        isLoading: false,
+        items,
+      });
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        return;
+      }
+
+      setSoundEventsState((currentState) => ({
+        ...currentState,
+        error,
+        isLoading: false,
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!selectedSensorId) {
+      setSoundEventsState({ error: null, isLoading: false, items: [] });
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    loadSelectedSensorEvents(selectedSensorId, { signal: controller.signal });
+
+    return () => controller.abort();
+  }, [loadSelectedSensorEvents, selectedSensorId]);
+
+  const clearMapSelection = () => {
+    setSelectedIncidentId(null);
     setSelectedSensorId(null);
-    simulation.handleMapClick(lngLat);
   };
 
-  const handleToggleSimulation = () => {
-    setSelectedSensorId(null);
-    simulation.toggleEnabled();
+  const hideIncident = (incident) => {
+    if (!incident) {
+      return;
+    }
+
+    const incidentKey = getIncidentVisibilityKey(incident);
+    setHiddenIncidentKeys((currentKeys) => {
+      const nextKeys = new Set(currentKeys);
+      nextKeys.add(incidentKey);
+      writeHiddenIncidentKeys(nextKeys);
+      return nextKeys;
+    });
+    dismissNotification(getIncidentNotificationId(incident));
+    setSelectedIncidentId(null);
   };
 
   return (
     <div className="app-shell">
       <div className="app-shell__map-layer">
         <OperationsMap
-          activeIncident={simulation.activeIncident}
-          hoveredIncidentId={hoveredIncidentId}
-          onHoverIncident={setHoveredIncidentId}
-          onMapClick={handleMapClick}
-          onSelectSensor={(sensor) => setSelectedSensorId(sensor.id)}
+          incidents={visibleIncidents}
+          onClearSelection={clearMapSelection}
+          onHideIncident={hideIncident}
+          onSelectIncident={(incident) => {
+            setSelectedIncidentId(incident.id);
+            setSelectedSensorId(null);
+          }}
+          onSelectSensor={(sensor) => {
+            setSelectedSensorId(sensor.id);
+            setSelectedIncidentId(null);
+          }}
           onViewStateChange={setViewState}
-          selectedSensorId={selectedSensorId}
-          suspiciousIncidents={suspiciousIncidents}
+          selectedIncident={selectedIncident}
+          selectedSensor={selectedSensor}
           sensors={sensors}
           viewState={viewState}
         />
       </div>
 
-      <div className="app-shell__overlay">
-        <div className="dashboard-layout">
-          <DashboardHeader
-            appTitle={appConfig.appTitle}
-            className="dashboard-layout__header"
-            incidentCount={suspiciousIncidents.length + (simulation.activeIncident ? 1 : 0)}
-            mapConfigured={isMapConfigured}
-            onOpenAdmin={onOpenAdmin}
-            onToggleSimulation={handleToggleSimulation}
-            sensorCount={sensors.length}
-            sensorSource={sensorSource}
-            simulationEnabled={simulation.isEnabled}
-            zoomLevel={viewState.zoom}
-          />
+      <button
+        type="button"
+        className="operations-admin-button"
+        onClick={onOpenAdmin}
+        aria-label="Open admin panel"
+        title="Open admin panel"
+      >
+        <Settings size={18} />
+      </button>
 
-          <SystemHealthPanel
-            className="dashboard-layout__status"
-            incidentsError={incidentsError}
-            incidentsLoading={incidentsLoading}
-            lastUpdated={lastUpdated}
-            selectedSensor={selectedSensor}
-            sensorsError={sensorsError}
-            sensorsLoading={sensorsLoading}
-            sensorSource={sensorSource}
-          />
+      <SensorDetailsDrawer
+        sensor={selectedSensor}
+        soundEventsState={soundEventsState}
+        onClose={() => setSelectedSensorId(null)}
+        onRefreshSoundEvents={() => loadSelectedSensorEvents(selectedSensor?.id)}
+      />
 
-          <SensorDetailsPanel
-            className="dashboard-layout__sensor"
-            liveAudioLevel={liveAudioLevel}
-            selectedSensor={selectedSensor}
-          />
-
-          <IncidentSummaryPanel
-            activeIncident={simulation.activeIncident}
-            className="dashboard-layout__incident"
-            focusIncident={focusIncident}
-            onDismissActiveIncident={simulation.dismissActiveIncident}
-          />
-
-          <HistoryPanel className="dashboard-layout__history" items={timelineItems} />
-
-          <NotificationStack
-            className="dashboard-layout__notifications"
-            notifications={simulation.notifications}
-            onDismiss={simulation.dismissNotification}
-          />
-        </div>
-      </div>
+      <NotificationStack
+        notifications={notifications}
+        onDismiss={dismissNotification}
+      />
     </div>
   );
 }

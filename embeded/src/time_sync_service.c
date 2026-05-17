@@ -6,14 +6,11 @@
 #include <string.h>
 
 #include "device_clock.h"
+#include "device_runtime_config.h"
 #include "lwip/altcp.h"
 #include "lwip/pbuf.h"
 #include "pico/cyw43_arch.h"
 
-#define TIME_SYNC_ATTEMPT_COUNT 3u
-#define TIME_SYNC_SAMPLE_DELAY_MS 50
-#define TIME_SYNC_RETRY_DELAY_MS 5000
-#define TIME_SYNC_PERIOD_MS 300000
 #define TIME_SYNC_URI_MAX 256
 
 static bool parse_u64_field(const char *json, const char *field_name, uint64_t *out_value)
@@ -191,19 +188,19 @@ static void schedule_after_attempt(time_sync_service_t *service, bool success)
 {
     if (service->attempts_remaining > 0)
     {
-        service->next_attempt_at = make_timeout_time_ms(TIME_SYNC_SAMPLE_DELAY_MS);
+        service->next_attempt_at = make_timeout_time_ms(DEVICE_TIME_SYNC_SAMPLE_DELAY_MS);
         return;
     }
 
     if (device_clock_is_synced())
     {
         service->status = TIME_SYNC_STATUS_SYNCED;
-        service->next_sync_at = make_timeout_time_ms(TIME_SYNC_PERIOD_MS);
+        service->next_sync_at = make_timeout_time_ms(DEVICE_TIME_SYNC_PERIOD_MS);
     }
     else
     {
         service->status = TIME_SYNC_STATUS_ERROR;
-        service->next_sync_at = make_timeout_time_ms(TIME_SYNC_RETRY_DELAY_MS);
+        service->next_sync_at = make_timeout_time_ms(DEVICE_TIME_SYNC_RETRY_DELAY_MS);
     }
 }
 
@@ -349,7 +346,7 @@ void time_sync_service_request_sync(time_sync_service_t *service)
         return;
     }
 
-    service->attempts_remaining = TIME_SYNC_ATTEMPT_COUNT;
+    service->attempts_remaining = DEVICE_TIME_SYNC_ATTEMPT_COUNT;
     service->best_rtt_ns = ULLONG_MAX;
     service->status = TIME_SYNC_STATUS_PENDING;
     service->next_attempt_at = get_absolute_time();
@@ -374,6 +371,37 @@ void time_sync_service_poll(time_sync_service_t *service)
     }
 
     start_time_sync_request(service);
+}
+
+bool time_sync_service_is_due(const time_sync_service_t *service)
+{
+    return service != NULL &&
+           service->server_addr_valid &&
+           !service->request_in_flight &&
+           service->attempts_remaining == 0 &&
+           time_reached(service->next_sync_at);
+}
+
+bool time_sync_service_has_pending_work(const time_sync_service_t *service)
+{
+    return service != NULL &&
+           (service->request_in_flight ||
+            service->attempts_remaining > 0 ||
+            service->status == TIME_SYNC_STATUS_PENDING);
+}
+
+void time_sync_service_mark_timeout(time_sync_service_t *service)
+{
+    if (service == NULL)
+    {
+        return;
+    }
+
+    service->connection = NULL;
+    service->request_in_flight = false;
+    service->attempts_remaining = 0;
+    service->status = TIME_SYNC_STATUS_ERROR;
+    service->next_sync_at = make_timeout_time_ms(DEVICE_TIME_SYNC_RETRY_DELAY_MS);
 }
 
 bool time_sync_service_is_synced(const time_sync_service_t *service)

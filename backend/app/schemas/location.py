@@ -1,6 +1,7 @@
+from typing import Optional
 from pydantic import BaseModel
 from pydantic import Field
-from typing import Optional
+from app.schemas.device_health import DeviceHealthReport
 
 class LocationBase(BaseModel):
     name: str
@@ -23,9 +24,24 @@ class LocationInDBBase(LocationBase):
     class Config:
         from_attributes = True
 
+
+class DeviceTimeSyncEvent(BaseModel):
+    id: int
+    device_id: str
+    client_sent_monotonic_ns: int
+    server_received_epoch_ns: int
+    server_transmit_epoch_ns: int
+    created_at_ns: int
+
+    class Config:
+        from_attributes = True
+
+
 class Location(LocationInDBBase):
     lat: Optional[float] = None
     lon: Optional[float] = None
+    latest_health: Optional[DeviceHealthReport] = None
+    latest_time_sync: Optional[DeviceTimeSyncEvent] = None
 
 class DeviceTimeSyncResponse(BaseModel):
     device_id: str

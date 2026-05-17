@@ -93,19 +93,24 @@ target_include_directories(uc8151 INTERFACE ${pimoroni_pico_SOURCE_DIR})
 # Add executable. Default name is the project name, version 0.1
 
 add_executable(embeded
+                src/acoustic_runtime.c
                 src/device_config.c
                 src/device_clock.c
                 src/device_status.c
                 src/diagnostics_service.c
+                src/health_runtime.c
+                src/network_runtime.c
+                src/runtime_status.c
                 src/wifi_service.c
-                src/udp_service.c
                 src/startup_helpers.c
                 src/time_sync_service.c
+                src/time_sync_runtime.c
                 src/audio_stream_queue.c
                 src/ina219_wattmeter.c
                 src/main.c
                 src/microphone.c
                 src/sd_card_buffer.c
+                src/sound_event_detector.c
                 src/inky_status_display.cpp
                 src/power_meter_service.c
                 src/server_health.c

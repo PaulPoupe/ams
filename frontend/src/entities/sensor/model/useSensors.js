@@ -1,12 +1,11 @@
 import { startTransition, useEffect, useState } from 'react';
 import { listSensors } from '@/entities/sensor/api/sensorApi';
-import { FALLBACK_SENSORS } from '@/entities/sensor/model/sensor';
 
 const initialState = {
-  sensors: FALLBACK_SENSORS,
+  sensors: [],
   error: null,
   isLoading: true,
-  source: 'fallback',
+  source: 'remote',
 };
 
 export function useSensors() {
@@ -25,10 +24,10 @@ export function useSensors() {
 
         startTransition(() => {
           setState({
-            sensors: sensors.length > 0 ? sensors : FALLBACK_SENSORS,
+            sensors,
             error: null,
             isLoading: false,
-            source: sensors.length > 0 ? 'remote' : 'fallback',
+            source: 'remote',
           });
         });
       } catch (error) {
@@ -38,10 +37,10 @@ export function useSensors() {
 
         startTransition(() => {
           setState({
-            sensors: FALLBACK_SENSORS,
+            sensors: [],
             error,
             isLoading: false,
-            source: 'fallback',
+            source: 'remote',
           });
         });
       }

@@ -40,10 +40,13 @@ typedef struct
 
 void server_health_service_init(server_health_service_t *service, const device_config_t *config);
 void server_health_service_set_microphone_active(server_health_service_t *service, bool active);
+void server_health_service_request_report(server_health_service_t *service);
+bool server_health_service_is_report_due(const server_health_service_t *service);
+bool server_health_service_is_request_in_flight(const server_health_service_t *service);
+void server_health_service_mark_timeout(server_health_service_t *service);
 void server_health_service_poll(server_health_service_t *service,
                                 const power_meter_service_t *power_meter_service,
                                 bool wifi_connected,
-                                bool udp_connected,
                                 uint16_t audio_queue_depth,
                                 uint32_t audio_dropped_chunks);
 server_health_connection_status_t server_health_service_connection_status(const server_health_service_t *service);

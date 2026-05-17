@@ -72,3 +72,27 @@ export function formatPercent(value) {
 
   return `${Math.round(value)}%`;
 }
+
+export function formatVoltage(value) {
+  if (!Number.isFinite(value)) {
+    return '-- V';
+  }
+
+  return `${value.toFixed(2)} V`;
+}
+
+export function formatCurrent(value) {
+  if (!Number.isFinite(value)) {
+    return '-- mA';
+  }
+
+  return `${Math.round(value)} mA`;
+}
+
+export function formatPower(value) {
+  if (!Number.isFinite(value)) {
+    return '-- mW';
+  }
+
+  return `${Math.round(value)} mW`;
+}

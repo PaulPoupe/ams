@@ -8,7 +8,6 @@ class DeviceHealthReportBase(BaseModel):
     status_message: Optional[str] = Field(default=None, max_length=255)
     uptime_ms: Optional[int] = Field(default=None, ge=0)
     wifi_connected: Optional[bool] = None
-    udp_connected: Optional[bool] = None
     microphone_active: Optional[bool] = None
     ina219_online: Optional[bool] = None
     bus_voltage_v: Optional[float] = None

@@ -13,7 +13,6 @@ class DeviceHealthReport(Base):
     status_message = Column(String, nullable=True)
     uptime_ms = Column(Integer, nullable=True)
     wifi_connected = Column(Boolean, nullable=True)
-    udp_connected = Column(Boolean, nullable=True)
     microphone_active = Column(Boolean, nullable=True)
     ina219_online = Column(Boolean, nullable=True)
     bus_voltage_v = Column(Float, nullable=True)

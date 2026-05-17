@@ -8,7 +8,6 @@ import {
 import {
   createDevice,
   deleteDevice,
-  initializeDevice,
   listDevices,
   updateDevice,
 } from '@/entities/device/api/deviceApi';
@@ -164,8 +163,6 @@ export function useAdminConsole() {
     ));
   };
 
-  const initializeDeviceById = (deviceId) => initializeDevice(deviceId);
-
   const loadDrawerPeaks = async (deviceId = null) => {
     setPeaksState((currentState) => ({
       ...currentState,
@@ -290,7 +287,6 @@ export function useAdminConsole() {
     formDevice: formMode === 'edit' ? formDevice : null,
     incidents: sortedIncidents,
     incidentsError,
-    initializeDeviceById,
     isBootstrapping,
     isFormOpen,
     isRefreshing,

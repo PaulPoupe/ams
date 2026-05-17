@@ -14,12 +14,10 @@ sqlalchemy = "^2.0.27"
 psycopg2-binary = "^2.9.9"
 geoalchemy2 = "^0.14.3"
 pydantic-settings = "^2.2.1"
-alembic = "^1.13.1"
 shapely = "^2.0.2"
 scipy = "^1.11.4"
 pyproj = "^3.6.1"
 numpy = "^1.26.2"
-requests = "^2.32.3"
 tzdata = ">=2024.1"
 
 [build-system]

@@ -1,43 +1,21 @@
-import { useMemo } from 'react';
-import { Layer, Map, NavigationControl, Source } from 'react-map-gl';
+import { Map, NavigationControl } from 'react-map-gl';
 import { appConfig, isMapConfigured } from '@/app/config/env';
-import { buildTriangulationGeoJson } from '@/entities/incident/model/incident';
 import { IncidentMarker } from '@/entities/incident/ui/IncidentMarker';
+import { IncidentPopup } from '@/entities/incident/ui/IncidentPopup';
 import { SensorMarker } from '@/entities/sensor/ui/SensorMarker';
 
-const triangulationLayer = {
-  id: 'triangulation-lines',
-  type: 'line',
-  paint: {
-    'line-color': '#ff7a59',
-    'line-width': 2,
-    'line-opacity': 0.75,
-    'line-dasharray': [1, 1.4],
-  },
-};
-
 export function OperationsMap({
-  activeIncident,
-  hoveredIncidentId,
-  onHoverIncident,
-  onMapClick,
+  incidents,
+  onClearSelection,
+  onHideIncident,
+  onSelectIncident,
   onSelectSensor,
   onViewStateChange,
-  selectedSensorId,
-  suspiciousIncidents,
+  selectedIncident,
+  selectedSensor,
   sensors,
   viewState,
 }) {
-  const activeSensorIds = useMemo(
-    () => new Set(activeIncident?.activeSensors?.map((sensor) => sensor.id) || []),
-    [activeIncident],
-  );
-
-  const triangulationData = useMemo(
-    () => buildTriangulationGeoJson(activeIncident),
-    [activeIncident],
-  );
-
   if (!isMapConfigured) {
     return (
       <div className="map-placeholder">
@@ -59,37 +37,30 @@ export function OperationsMap({
       mapboxAccessToken={appConfig.mapboxToken}
       reuseMaps
       style={{ width: '100%', height: '100%' }}
-      onClick={(event) => onMapClick(event.lngLat)}
+      onClick={onClearSelection}
       onMove={(event) => onViewStateChange(event.viewState)}
     >
       <NavigationControl position="bottom-right" />
-
-      {triangulationData ? (
-        <Source type="geojson" data={triangulationData}>
-          <Layer {...triangulationLayer} />
-        </Source>
-      ) : null}
 
       {sensors.map((sensor) => (
         <SensorMarker
           key={sensor.id}
           sensor={sensor}
-          isActive={activeSensorIds.has(sensor.id)}
-          isSelected={selectedSensorId === sensor.id}
+          isActive={selectedSensor?.id === sensor.id}
           onSelect={onSelectSensor}
         />
       ))}
 
-      {suspiciousIncidents.map((incident) => (
+      {incidents.map((incident) => (
         <IncidentMarker
           key={incident.id}
           incident={incident}
-          isHovered={hoveredIncidentId === incident.id}
-          onHoverChange={onHoverIncident}
+          isSelected={selectedIncident?.id === incident.id}
+          onSelect={onSelectIncident}
         />
       ))}
 
-      {activeIncident ? <IncidentMarker incident={activeIncident} variant="live" /> : null}
+      <IncidentPopup incident={selectedIncident} onClose={onClearSelection} onHide={onHideIncident} />
     </Map>
   );
 }

@@ -15,7 +15,6 @@ void device_status_snapshot_init(device_status_snapshot_t *snapshot)
     snapshot->sd_card = DEVICE_COMPONENT_PENDING;
     snapshot->wifi = DEVICE_WIFI_SLEEP;
     snapshot->server = DEVICE_SERVER_PENDING;
-    snapshot->udp_ready = false;
 }
 
 bool device_status_snapshot_equals(const device_status_snapshot_t *lhs, const device_status_snapshot_t *rhs)
@@ -30,7 +29,9 @@ bool device_status_snapshot_equals(const device_status_snapshot_t *lhs, const de
            lhs->sd_card == rhs->sd_card &&
            lhs->wifi == rhs->wifi &&
            lhs->server == rhs->server &&
-           lhs->udp_ready == rhs->udp_ready;
+           lhs->has_power_reading == rhs->has_power_reading &&
+           lhs->bus_voltage_v == rhs->bus_voltage_v &&
+           lhs->current_ma == rhs->current_ma;
 }
 
 const char *device_component_state_label(device_component_state_t state)

@@ -26,7 +26,7 @@ constexpr int kTextLeft = 4;
 constexpr int kTextTop = 4;
 constexpr int kLineStep = 12;
 constexpr int kTextWrap = kDisplayWidth - (kTextLeft * 2);
-constexpr uint32_t kDisplayRefreshIntervalMs = 60000;
+constexpr uint32_t kDisplayRefreshIntervalMs = 5000;
 
 struct display_context_t {
     uint8_t framebuffer[kFrameBufferSize];
@@ -80,15 +80,22 @@ void format_line(char *out, size_t out_size, const char *label, const char *valu
     out[out_size - 1] = '\0';
 }
 
-void format_audio_line(char *out, size_t out_size, int raw_audio_sample_rate_hz, int audio_downsample_factor)
-{
-    std::snprintf(out, out_size, "Audio: %dHz/x%d", raw_audio_sample_rate_hz, audio_downsample_factor);
-    out[out_size - 1] = '\0';
-}
-
 void format_status_line(char *out, size_t out_size, const char *label, const char *value)
 {
     std::snprintf(out, out_size, "%s%s", label, value);
+    out[out_size - 1] = '\0';
+}
+
+void format_power_line(char *out, size_t out_size, const device_status_snapshot_t *status)
+{
+    if (status != nullptr && status->has_power_reading)
+    {
+        std::snprintf(out, out_size, "Power: %.2fV %.0fmA", status->bus_voltage_v, status->current_ma);
+    }
+    else
+    {
+        std::snprintf(out, out_size, "Power: -");
+    }
     out[out_size - 1] = '\0';
 }
 
@@ -100,16 +107,7 @@ bool config_equals(const device_config_t *lhs, const device_config_t *rhs)
 
 bool display_status_equals(const device_status_snapshot_t *lhs, const device_status_snapshot_t *rhs)
 {
-    if (lhs == nullptr || rhs == nullptr)
-    {
-        return false;
-    }
-
-    device_status_snapshot_t normalized_lhs = *lhs;
-    device_status_snapshot_t normalized_rhs = *rhs;
-    normalized_lhs.udp_ready = false;
-    normalized_rhs.udp_ready = false;
-    return device_status_snapshot_equals(&normalized_lhs, &normalized_rhs);
+    return device_status_snapshot_equals(lhs, rhs);
 }
 
 void render_screen(display_context_t *context,
@@ -118,6 +116,9 @@ void render_screen(display_context_t *context,
                    int raw_audio_sample_rate_hz,
                    int audio_downsample_factor)
 {
+    (void)raw_audio_sample_rate_hz;
+    (void)audio_downsample_factor;
+
     PicoGraphics_Pen1BitY &graphics = context->graphics;
     char line_buffer[40];
 
@@ -130,19 +131,41 @@ void render_screen(display_context_t *context,
     draw_line(graphics, 1, line_buffer);
     format_line(line_buffer, sizeof(line_buffer), "WiFi: ", config != nullptr ? config->ssid : nullptr);
     draw_line(graphics, 2, line_buffer);
-    format_audio_line(line_buffer, sizeof(line_buffer), raw_audio_sample_rate_hz, audio_downsample_factor);
-    draw_line(graphics, 3, line_buffer);
 
     format_status_line(line_buffer, sizeof(line_buffer), "Mic: ", device_component_state_label(status->microphone));
-    draw_line(graphics, 4, line_buffer);
+    draw_line(graphics, 3, line_buffer);
     format_status_line(line_buffer, sizeof(line_buffer), "INA219: ", device_component_state_label(status->ina219));
-    draw_line(graphics, 5, line_buffer);
-    format_status_line(line_buffer, sizeof(line_buffer), "SD: ", device_component_state_label(status->sd_card));
-    draw_line(graphics, 6, line_buffer);
+    draw_line(graphics, 4, line_buffer);
     format_status_line(line_buffer, sizeof(line_buffer), "Wi-Fi: ", device_wifi_state_label(status->wifi));
-    draw_line(graphics, 7, line_buffer);
+    draw_line(graphics, 5, line_buffer);
     format_status_line(line_buffer, sizeof(line_buffer), "Server: ", device_server_state_label(status->server));
-    draw_line(graphics, 8, line_buffer);
+    draw_line(graphics, 6, line_buffer);
+    format_power_line(line_buffer, sizeof(line_buffer), status);
+    draw_line(graphics, 7, line_buffer);
+
+    context->display.update(&graphics);
+}
+
+void render_missing_settings_screen(display_context_t *context, bool usb_console_connected)
+{
+    PicoGraphics_Pen1BitY &graphics = context->graphics;
+
+    graphics.set_pen(15);
+    graphics.clear();
+    graphics.set_pen(0);
+
+    draw_line(graphics, 0, "AMS setup required");
+    draw_line(graphics, 2, "No saved settings");
+    if (usb_console_connected)
+    {
+        draw_line(graphics, 4, "USB console ready");
+        draw_line(graphics, 5, "Enter WiFi/server/id");
+    }
+    else
+    {
+        draw_line(graphics, 4, "Connect USB console");
+        draw_line(graphics, 5, "then reboot to setup");
+    }
 
     context->display.update(&graphics);
 }
@@ -155,6 +178,14 @@ extern "C" void inky_status_display_reset(void)
     context->has_rendered = false;
     device_status_snapshot_init(&context->last_status);
     std::memset(&context->last_config, 0, sizeof(context->last_config));
+}
+
+extern "C" void inky_status_display_show_missing_settings(bool usb_console_connected)
+{
+    display_context_t *context = get_display_context();
+    render_missing_settings_screen(context, usb_console_connected);
+    context->last_refresh_at = get_absolute_time();
+    context->has_rendered = false;
 }
 
 extern "C" void inky_status_display_update(const device_config_t *config,

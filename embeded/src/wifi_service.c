@@ -18,6 +18,7 @@ int initialize_network(void)
 
 int connect_to_wifi(const char *ssid, const char *password)
 {
+    cyw43_arch_enable_sta_mode();
     int err = cyw43_arch_wifi_connect_timeout_ms(ssid, password, CYW43_AUTH_WPA2_AES_PSK, 10000);
     if (err)
     {
@@ -25,6 +26,11 @@ int connect_to_wifi(const char *ssid, const char *password)
         return -1;
     }
     return 0;
+}
+
+void disconnect_wifi(void)
+{
+    cyw43_arch_disable_sta_mode();
 }
 
 bool is_wifi_connected(void)

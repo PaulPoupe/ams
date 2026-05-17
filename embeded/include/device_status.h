@@ -37,7 +37,9 @@ typedef struct
     device_component_state_t sd_card;
     device_wifi_state_t wifi;
     device_server_state_t server;
-    bool udp_ready;
+    bool has_power_reading;
+    float bus_voltage_v;
+    float current_ma;
 } device_status_snapshot_t;
 
 void device_status_snapshot_init(device_status_snapshot_t *snapshot);

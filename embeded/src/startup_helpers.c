@@ -4,7 +4,10 @@
 #include "pico/stdlib.h"
 #include "pico/stdio_usb.h"
 #include "device_config.h"
+#include "device_runtime_config.h"
 #include "startup_helpers.h"
+
+#define USB_CONSOLE_DETECT_WINDOW_MS 7000u
 
 typedef enum
 {
@@ -216,10 +219,12 @@ static bool update_config_from_prompt(device_config_t *config)
 }
 
 void print_current_settings(const device_config_t *config,
-                            int server_port,
                             int raw_audio_sample_rate_hz,
                             int audio_downsample_factor)
 {
+    (void)raw_audio_sample_rate_hz;
+    (void)audio_downsample_factor;
+
     if (config == NULL)
     {
         return;
@@ -230,10 +235,24 @@ void print_current_settings(const device_config_t *config,
     print_setting_str("Wi-Fi password", config->password);
     print_setting_str("Server IP", config->server_ip);
     print_setting_str("Device ID", config->device_id);
-    print_setting_int("UDP port", server_port);
-    printf("Audio sample rate: %d Hz\n", raw_audio_sample_rate_hz);
-    print_setting_int("Audio downsample factor", audio_downsample_factor);
     printf("=============================\n\n");
+}
+
+bool startup_wait_for_usb_console(power_meter_service_t *power_meter_service)
+{
+    absolute_time_t deadline = make_timeout_time_ms(USB_CONSOLE_DETECT_WINDOW_MS);
+    while (!time_reached(deadline))
+    {
+        if (stdio_usb_connected())
+        {
+            return true;
+        }
+
+        power_meter_service_poll(power_meter_service);
+        sleep_ms(DEVICE_RUNTIME_POLL_SLEEP_MS);
+    }
+
+    return stdio_usb_connected();
 }
 
 const char *startup_run_mode_label(startup_run_mode_t mode)

@@ -17,7 +17,6 @@ typedef struct
     bool initialized;
     bool ready;
     bool block_addressed;
-    uint32_t capacity_blocks;
     uint32_t base_block;
     uint32_t block_count;
     uint32_t next_block_index;

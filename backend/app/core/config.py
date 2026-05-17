@@ -4,24 +4,12 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "AMS Backend"
     API_V1_STR: str = "/api"
     DATABASE_URL: str
-    UDP_SERVER_HOST: str = "0.0.0.0"
-    UDP_SERVER_PORT: int = 5000
 
     # Audio Settings
     AUDIO_SAMPLE_RATE: int = 16000
     AUDIO_CHANNELS: int = 1
     AUDIO_BIT_DEPTH: int = 16
     AUDIO_STORAGE_PATH: str = "storage/audio"
-
-    # Whisper Settings
-    WHISPER_API_URL: str = "http://localhost:9000"
-    HELP_KEYWORDS: list[str] = [
-        "help", "pomocy", "ratunku",
-        "kill", "murder", "rape", "fire", "attack",
-        "zabijają", "morderstwo", "gwałt", "pożar", "atak"
-    ]
-    AUDIO_ANALYSIS_INTERVAL_SEC: int = 30
-    AUDIO_ANALYSIS_WINDOW_SEC: int = 60
     CORS_ALLOW_ORIGINS: str = (
         "http://localhost,"
         "http://127.0.0.1,"

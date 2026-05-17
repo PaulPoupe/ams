@@ -43,6 +43,9 @@ typedef struct
 void time_sync_service_init(time_sync_service_t *service, const device_config_t *config);
 void time_sync_service_request_sync(time_sync_service_t *service);
 void time_sync_service_poll(time_sync_service_t *service);
+bool time_sync_service_is_due(const time_sync_service_t *service);
+bool time_sync_service_has_pending_work(const time_sync_service_t *service);
+void time_sync_service_mark_timeout(time_sync_service_t *service);
 bool time_sync_service_is_synced(const time_sync_service_t *service);
 time_sync_status_t time_sync_service_status(const time_sync_service_t *service);
 

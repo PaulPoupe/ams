@@ -3,7 +3,7 @@ import { deleteJson, getJson, postJson, putJson } from '@/shared/api/http';
 import { mapDevice, serializeDevicePayload } from '@/entities/device/model/device';
 
 export async function listDevices(options = {}) {
-  const response = await getJson('/api/locations/', {
+  const response = await getJson('/api/devices/', {
     params: {
       limit: appConfig.admin.limits.devices,
       skip: 0,
@@ -16,7 +16,7 @@ export async function listDevices(options = {}) {
 
 export async function createDevice(input) {
   const response = await postJson(
-    '/api/locations/',
+    '/api/devices/',
     serializeDevicePayload(input, { includeId: true }),
   );
 
@@ -25,7 +25,7 @@ export async function createDevice(input) {
 
 export async function updateDevice(deviceId, input) {
   const response = await putJson(
-    `/api/locations/${deviceId}`,
+    `/api/devices/${deviceId}`,
     serializeDevicePayload(input),
   );
 
@@ -33,9 +33,5 @@ export async function updateDevice(deviceId, input) {
 }
 
 export function deleteDevice(deviceId) {
-  return deleteJson(`/api/locations/${deviceId}`);
-}
-
-export function initializeDevice(deviceId) {
-  return postJson(`/api/locations/${deviceId}/init`);
+  return deleteJson(`/api/devices/${deviceId}`);
 }

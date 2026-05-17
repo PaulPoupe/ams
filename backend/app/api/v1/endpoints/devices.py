@@ -1,13 +1,15 @@
 import logging
+import uuid
 from typing import Any, List
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from geoalchemy2.shape import from_shape, to_shape
+from shapely.geometry import Point
 from sqlalchemy.orm import Session
 
 from app.core.time_utils import WARSAW_TIMEZONE_NAME, epoch_ns, warsaw_offset_seconds
-from app.db.session import SessionLocal, get_db
+from app.db.session import get_db
 from app import schemas, models
-from app.api.v1.endpoints import locations, audio_records, peaks
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -20,24 +22,57 @@ def _require_device(db: Session, device_id: str) -> models.Location:
     return device
 
 
-def _record_device_time_sync_event(
+def _attach_coordinates(device: models.Location) -> models.Location:
+    if device.geom:
+        point = to_shape(device.geom)
+        device.lat = point.y
+        device.lon = point.x
+    return device
+
+
+def _latest_device_health_report(db: Session, device_id: str) -> models.DeviceHealthReport | None:
+    return (
+        db.query(models.DeviceHealthReport)
+        .filter(models.DeviceHealthReport.device_id == device_id)
+        .order_by(models.DeviceHealthReport.received_at_ns.desc())
+        .first()
+    )
+
+
+def _latest_device_time_sync_event(db: Session, device_id: str) -> models.DeviceTimeSyncEvent | None:
+    return (
+        db.query(models.DeviceTimeSyncEvent)
+        .filter(models.DeviceTimeSyncEvent.device_id == device_id)
+        .order_by(models.DeviceTimeSyncEvent.created_at_ns.desc())
+        .first()
+    )
+
+
+def _attach_status(db: Session, device: models.Location) -> models.Location:
+    _attach_coordinates(device)
+    device.latest_health = _latest_device_health_report(db, device.id)
+    device.latest_time_sync = _latest_device_time_sync_event(db, device.id)
+    return device
+
+
+def _create_device_time_sync_event(
+    *,
+    db: Session,
     device_id: str,
     client_sent_monotonic_ns: int,
     server_received_epoch_ns: int,
     server_transmit_epoch_ns: int,
-) -> None:
-    db = SessionLocal()
-    try:
-        db_obj = models.DeviceTimeSyncEvent(
-            device_id=device_id,
-            client_sent_monotonic_ns=client_sent_monotonic_ns,
-            server_received_epoch_ns=server_received_epoch_ns,
-            server_transmit_epoch_ns=server_transmit_epoch_ns,
-        )
-        db.add(db_obj)
-        db.commit()
-    finally:
-        db.close()
+) -> models.DeviceTimeSyncEvent:
+    db_obj = models.DeviceTimeSyncEvent(
+        device_id=device_id,
+        client_sent_monotonic_ns=client_sent_monotonic_ns,
+        server_received_epoch_ns=server_received_epoch_ns,
+        server_transmit_epoch_ns=server_transmit_epoch_ns,
+    )
+    db.add(db_obj)
+    db.commit()
+    db.refresh(db_obj)
+    return db_obj
 
 
 def _create_device_health_report(
@@ -57,10 +92,9 @@ def _create_device_health_report(
     db.refresh(db_obj)
 
     logger.info(
-        "Health report from %s: wifi=%s udp=%s mic=%s ina219=%s uptime_ms=%s bus_v=%s current_ma=%s power_mw=%s queue_depth=%s dropped=%s msg=%s",
+        "Health report from %s: wifi=%s mic=%s ina219=%s uptime_ms=%s bus_v=%s current_ma=%s power_mw=%s queue_depth=%s dropped=%s msg=%s",
         device_id,
         db_obj.wifi_connected,
-        db_obj.udp_connected,
         db_obj.microphone_active,
         db_obj.ina219_online,
         db_obj.uptime_ms,
@@ -74,8 +108,6 @@ def _create_device_health_report(
 
     return db_obj
 
-# --- Device Management (from locations.py) ---
-
 @router.post("/", response_model=schemas.Location, summary="Register device")
 def create_device(
     *,
@@ -85,7 +117,21 @@ def create_device(
     """
     Registers a new device (microphone).
     """
-    return locations.create_location(db=db, location_in=location_in)
+    device_id = location_in.id or str(uuid.uuid4())
+    existing = db.query(models.Location).filter(models.Location.id == device_id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Device with ID {device_id} already exists.")
+
+    device = models.Location(
+        id=device_id,
+        name=location_in.name,
+        tag=location_in.tag,
+        geom=from_shape(Point(location_in.lon, location_in.lat), srid=4326),
+    )
+    db.add(device)
+    db.commit()
+    db.refresh(device)
+    return _attach_status(db, device)
 
 
 @router.get("/{device_id}", response_model=schemas.Location, summary="Get device by ID")
@@ -97,7 +143,7 @@ def read_device(
     """
     Retrieve details of a specific device.
     """
-    return locations.read_location(db=db, id=device_id)
+    return _attach_status(db, _require_device(db, device_id))
 
 
 @router.get("/", response_model=List[schemas.Location], summary="List all devices")
@@ -109,7 +155,8 @@ def list_devices(
     """
     Retrieve a list of all registered devices with their coordinates.
     """
-    return locations.read_locations(db=db, skip=skip, limit=limit)
+    devices = db.query(models.Location).offset(skip).limit(limit).all()
+    return [_attach_status(db, device) for device in devices]
 
 @router.put("/{device_id}", response_model=schemas.Location, summary="Update device")
 def update_device(
@@ -121,7 +168,25 @@ def update_device(
     """
     Update device settings (name, tag, location).
     """
-    return locations.update_location(db=db, id=device_id, location_in=location_in)
+    device = _require_device(db, device_id)
+    update_data = location_in.model_dump(exclude_unset=True)
+
+    if "lat" in update_data or "lon" in update_data:
+        lat = update_data.pop("lat", None)
+        lon = update_data.pop("lon", None)
+        current_point = to_shape(device.geom) if device.geom else Point(0, 0)
+        device.geom = from_shape(
+            Point(lon if lon is not None else current_point.x, lat if lat is not None else current_point.y),
+            srid=4326,
+        )
+
+    for field, value in update_data.items():
+        setattr(device, field, value)
+
+    db.add(device)
+    db.commit()
+    db.refresh(device)
+    return _attach_status(db, device)
 
 @router.delete("/{device_id}", response_model=schemas.Location, summary="Delete device")
 def delete_device(
@@ -132,13 +197,19 @@ def delete_device(
     """
     Delete a device by its ID.
     """
-    return locations.delete_location(db=db, id=device_id)
+    device = _require_device(db, device_id)
+    db.query(models.SoundEvent).filter(models.SoundEvent.device_id == device_id).delete(synchronize_session=False)
+    db.query(models.Peak).filter(models.Peak.device_id == device_id).delete(synchronize_session=False)
+    db.query(models.DeviceHealthReport).filter(models.DeviceHealthReport.device_id == device_id).delete(synchronize_session=False)
+    db.query(models.DeviceTimeSyncEvent).filter(models.DeviceTimeSyncEvent.device_id == device_id).delete(synchronize_session=False)
+    db.delete(device)
+    db.commit()
+    return _attach_coordinates(device)
 
 @router.get("/{device_id}/time/sync", response_model=schemas.DeviceTimeSyncResponse, summary="Synchronize device clock")
 def sync_device_time(
     *,
     db: Session = Depends(get_db),
-    background_tasks: BackgroundTasks,
     device_id: str,
     client_sent_monotonic_ns: int,
 ) -> Any:
@@ -149,12 +220,12 @@ def sync_device_time(
     _require_device(db, device_id)
     server_transmit_epoch_ns = epoch_ns()
 
-    background_tasks.add_task(
-        _record_device_time_sync_event,
-        device_id,
-        client_sent_monotonic_ns,
-        server_received_epoch_ns,
-        server_transmit_epoch_ns,
+    _create_device_time_sync_event(
+        db=db,
+        device_id=device_id,
+        client_sent_monotonic_ns=client_sent_monotonic_ns,
+        server_received_epoch_ns=server_received_epoch_ns,
+        server_transmit_epoch_ns=server_transmit_epoch_ns,
     )
 
     return {
@@ -164,6 +235,22 @@ def sync_device_time(
         "timezone_name": WARSAW_TIMEZONE_NAME,
         "timezone_offset_seconds": warsaw_offset_seconds(server_transmit_epoch_ns),
     }
+
+
+@router.get("/{device_id}/time/sync/latest", response_model=schemas.DeviceTimeSyncEvent, summary="Get latest device clock synchronization")
+def read_latest_device_time_sync_event(
+    *,
+    db: Session = Depends(get_db),
+    device_id: str,
+) -> Any:
+    """
+    Return the most recent time synchronization event for a device.
+    """
+    _require_device(db, device_id)
+    event = _latest_device_time_sync_event(db, device_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="No time sync events found for this device")
+    return event
 
 
 @router.post("/{device_id}/health", response_model=schemas.DeviceHealthReport, summary="Report device health")
@@ -202,12 +289,7 @@ def read_latest_device_health_report(
     Return the most recent health report received from a device.
     """
     _require_device(db, device_id)
-    report = (
-        db.query(models.DeviceHealthReport)
-        .filter(models.DeviceHealthReport.device_id == device_id)
-        .order_by(models.DeviceHealthReport.received_at_ns.desc())
-        .first()
-    )
+    report = _latest_device_health_report(db, device_id)
     if not report:
         raise HTTPException(status_code=404, detail="No health reports found for this device")
     return report
@@ -233,55 +315,3 @@ def list_device_health_reports(
         .limit(limit)
         .all()
     )
-
-# --- Device Audio Records (from audio_records.py) ---
-
-@router.get("/{device_id}/audio_records/{record_id}", response_model=schemas.AudioRecord, summary="Get a specific record for a device")
-def read_device_audio_record(
-    device_id: str,
-    record_id: int,
-    db: Session = Depends(get_db),
-) -> Any:
-    """
-    Retrieve details of a specific audio record for a specific device.
-    """
-    record = audio_records.read_record(record_id=record_id, db=db)
-    if record.device_id != device_id:
-        raise HTTPException(status_code=404, detail="Record not found for this device")
-    return record
-
-@router.get("/{device_id}/audio_records", response_model=List[schemas.AudioRecord], summary="List all records for a device")
-def list_device_audio_records(
-    device_id: str,
-    db: Session = Depends(get_db),
-    skip: int = 0,
-    limit: int = 100,
-) -> Any:
-    """
-    Retrieve a list of all audio records for a specific device.
-    """
-    return audio_records.list_device_records(device_id=device_id, db=db, skip=skip, limit=limit)
-
-@router.delete("/{device_id}/audio_records", summary="Delete all records for a device")
-def delete_device_audio_records(
-    device_id: str,
-    db: Session = Depends(get_db),
-) -> Any:
-    """
-    Delete all audio records for a specific device and remove their associated files.
-    """
-    return audio_records.delete_device_records(device_id=device_id, db=db)
-
-# --- Device Peaks (from peaks.py) ---
-
-@router.get("/{device_id}/peaks", response_model=List[schemas.Peak], summary="Get peaks by device")
-def read_device_peaks(
-    device_id: str,
-    db: Session = Depends(get_db),
-    skip: int = 0,
-    limit: int = 100,
-) -> Any:
-    """
-    Retrieve all peaks registered by a specific device.
-    """
-    return peaks.read_peaks_by_device(device_id=device_id, db=db, skip=skip, limit=limit)

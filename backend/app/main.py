@@ -4,11 +4,9 @@ from fastapi.staticfiles import StaticFiles
 import os
 from app.api.v1.api import api_router
 from app.core.config import settings
-from app.db.schema import initialize_database_schema
+from app.db.schema import create_database_schema
 
-from app.udp_server.server import start_udp_server_thread
-
-initialize_database_schema()
+create_database_schema()
 
 import logging
 import sys
@@ -20,26 +18,15 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
-from contextlib import asynccontextmanager
-
 logger = logging.getLogger(__name__)
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    logger.info(f"Starting UDP server on {settings.UDP_SERVER_HOST}:{settings.UDP_SERVER_PORT}...")
-    # Start UDP server in a separate thread with config parameters
-    start_udp_server_thread(host=settings.UDP_SERVER_HOST, port=settings.UDP_SERVER_PORT)
-    logger.info("UDP server thread started successfully")
-    yield
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    description="Acoustic monitoring backend with UDP audio ingestion, Whisper analysis, and incident tracking",
+    description="Acoustic monitoring backend with event-based audio uploads, time sync, and incident triangulation",
     version="1.0.0",
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     docs_url=f"{settings.API_V1_STR}/docs",
     redoc_url=f"{settings.API_V1_STR}/redoc",
-    lifespan=lifespan
 )
 
 # CORS configuration

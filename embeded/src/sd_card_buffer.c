@@ -18,12 +18,10 @@
 #define SD_IDLE_TIMEOUT_MS 1500u
 #define SD_READY_TIMEOUT_MS 2000u
 #define SD_DATA_TIMEOUT_MS 500u
-#define SD_BUFFER_END_MARGIN_BLOCKS 1024u
-#define SD_FALLBACK_BASE_BLOCK 2048u
+#define SD_BUFFER_BASE_BLOCK 32768u
 
 #define SD_CMD0 0u
 #define SD_CMD8 8u
-#define SD_CMD9 9u
 #define SD_CMD16 16u
 #define SD_CMD24 24u
 #define SD_CMD55 55u
@@ -101,37 +99,6 @@ static bool sd_wait_ready(uint32_t timeout_ms)
     return false;
 }
 
-static bool sd_wait_token(uint8_t token, uint32_t timeout_ms)
-{
-    absolute_time_t deadline = make_timeout_time_ms(timeout_ms);
-    while (!time_reached(deadline))
-    {
-        if (spi_transfer(0xFFu) == token)
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-static bool sd_read_data_block(uint8_t *data, size_t length)
-{
-    if (!sd_wait_token(SD_DATA_TOKEN, SD_DATA_TIMEOUT_MS))
-    {
-        return false;
-    }
-
-    for (size_t i = 0; i < length; ++i)
-    {
-        data[i] = spi_transfer(0xFFu);
-    }
-
-    spi_transfer(0xFFu);
-    spi_transfer(0xFFu);
-    return true;
-}
-
 static bool sd_read_ocr(uint8_t ocr[4])
 {
     uint8_t response = sd_send_command(SD_CMD58, 0u, 0x01u);
@@ -148,48 +115,6 @@ static bool sd_read_ocr(uint8_t ocr[4])
 
     sd_deselect();
     return true;
-}
-
-static bool sd_read_csd(uint8_t csd[16])
-{
-    uint8_t response = sd_send_command(SD_CMD9, 0u, 0x01u);
-    if (response != SD_R1_READY)
-    {
-        sd_deselect();
-        return false;
-    }
-
-    bool ok = sd_read_data_block(csd, 16u);
-    sd_deselect();
-    return ok;
-}
-
-static uint32_t sd_parse_capacity_blocks(const uint8_t csd[16])
-{
-    uint8_t csd_version = (uint8_t)((csd[0] >> 6) & 0x03u);
-    if (csd_version == 1u)
-    {
-        uint32_t c_size = ((uint32_t)(csd[7] & 0x3Fu) << 16) |
-                          ((uint32_t)csd[8] << 8) |
-                          (uint32_t)csd[9];
-        return (c_size + 1u) * 1024u;
-    }
-
-    if (csd_version == 0u)
-    {
-        uint32_t read_bl_len = csd[5] & 0x0Fu;
-        uint32_t c_size = ((uint32_t)(csd[6] & 0x03u) << 10) |
-                          ((uint32_t)csd[7] << 2) |
-                          ((uint32_t)(csd[8] & 0xC0u) >> 6);
-        uint32_t c_size_mult = ((uint32_t)(csd[9] & 0x03u) << 1) |
-                               ((uint32_t)(csd[10] & 0x80u) >> 7);
-        uint32_t block_len = 1u << read_bl_len;
-        uint32_t block_count = (c_size + 1u) * (1u << (c_size_mult + 2u));
-        uint64_t capacity_bytes = (uint64_t)block_count * (uint64_t)block_len;
-        return (uint32_t)(capacity_bytes / SD_CARD_BLOCK_SIZE);
-    }
-
-    return 0u;
 }
 
 static bool sd_send_acmd41(bool v2_card)
@@ -282,12 +207,6 @@ static bool sd_initialize_card(sd_card_buffer_t *buffer)
         }
     }
 
-    uint8_t csd[16] = {0};
-    if (sd_read_csd(csd))
-    {
-        buffer->capacity_blocks = sd_parse_capacity_blocks(csd);
-    }
-
     return true;
 }
 
@@ -378,15 +297,7 @@ bool sd_card_buffer_init(sd_card_buffer_t *buffer)
         return false;
     }
 
-    if (buffer->capacity_blocks > (SD_CARD_AUDIO_BUFFER_BLOCKS + SD_BUFFER_END_MARGIN_BLOCKS))
-    {
-        buffer->base_block = buffer->capacity_blocks - SD_BUFFER_END_MARGIN_BLOCKS - SD_CARD_AUDIO_BUFFER_BLOCKS;
-    }
-    else
-    {
-        buffer->base_block = SD_FALLBACK_BASE_BLOCK;
-    }
-
+    buffer->base_block = SD_BUFFER_BASE_BLOCK;
     spi_set_baudrate(SD_SPI, SD_SPI_RUN_BAUD_HZ);
     memset(buffer->pending_block, 0, sizeof(buffer->pending_block));
     buffer->ready = true;

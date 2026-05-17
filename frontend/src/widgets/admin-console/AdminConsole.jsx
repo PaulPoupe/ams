@@ -22,15 +22,6 @@ export function AdminConsole({ onOpenOperations }) {
     }
   };
 
-  const handleInitDevice = async (deviceId) => {
-    try {
-      const response = await admin.initializeDeviceById(deviceId);
-      window.alert(`Device ${deviceId} initialized. Server time: ${response.server_time}`);
-    } catch (error) {
-      window.alert(error.message || 'Failed to initialize device.');
-    }
-  };
-
   return (
     <div className="admin-console">
       <div className="admin-console__layout">
@@ -50,7 +41,6 @@ export function AdminConsole({ onOpenOperations }) {
           error={admin.devicesError}
           onDelete={(deviceId) => confirmAndRun(`Delete device ${deviceId}?`, () => admin.deleteDeviceById(deviceId))}
           onEdit={admin.openEditForm}
-          onInit={handleInitDevice}
           onOpenAudio={admin.openDeviceAudioDrawer}
           onOpenPeaks={admin.openDevicePeaksDrawer}
         />

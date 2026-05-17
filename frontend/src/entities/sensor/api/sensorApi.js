@@ -3,7 +3,7 @@ import { getJson } from '@/shared/api/http';
 import { isSensorLocated, mapSensor } from '@/entities/sensor/model/sensor';
 
 export async function listSensors(options = {}) {
-  const response = await getJson('/api/locations/', {
+  const response = await getJson('/api/devices/', {
     params: {
       limit: appConfig.limits.sensors,
     },

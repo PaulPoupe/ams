@@ -1,8 +1,44 @@
-import { Activity, AudioLines, Cpu, Edit, RefreshCw, Trash2 } from 'lucide-react';
+import { Activity, AudioLines, Cpu, Edit, Trash2 } from 'lucide-react';
 import { Panel } from '@/shared/ui/Panel';
 import { Badge } from '@/shared/ui/Badge';
 import { cx } from '@/shared/lib/cx';
-import { formatCoordinate } from '@/shared/lib/format';
+import {
+  formatCoordinate,
+  formatCurrent,
+  formatPower,
+  formatPreciseDateTime,
+  formatVoltage,
+} from '@/shared/lib/format';
+
+const renderBatteryState = (device) => {
+  const health = device.latestHealth;
+
+  if (!health) {
+    return <span className="muted-copy">No report</span>;
+  }
+
+  return (
+    <div className="admin-telemetry-cell">
+      <span>{formatVoltage(health.busVoltageV)} / {formatCurrent(health.currentMa)}</span>
+      <span>{formatPower(health.powerMw)} · {health.statusMessage || 'ok'}</span>
+    </div>
+  );
+};
+
+const renderLastSync = (device) => {
+  const sync = device.latestTimeSync;
+
+  if (!sync) {
+    return <span className="muted-copy">Never</span>;
+  }
+
+  return (
+    <div className="admin-telemetry-cell">
+      <span>{formatPreciseDateTime(sync.serverTransmitAt)}</span>
+      <span>recorded {formatPreciseDateTime(sync.createdAt)}</span>
+    </div>
+  );
+};
 
 export function DeviceRegistryPanel({
   className,
@@ -10,7 +46,6 @@ export function DeviceRegistryPanel({
   error,
   onDelete,
   onEdit,
-  onInit,
   onOpenAudio,
   onOpenPeaks,
 }) {
@@ -35,6 +70,8 @@ export function DeviceRegistryPanel({
               <th>Name</th>
               <th>Tag</th>
               <th>Coordinates</th>
+              <th>Last device sync</th>
+              <th>Battery</th>
               <th className="align-right">Actions</th>
             </tr>
           </thead>
@@ -53,11 +90,10 @@ export function DeviceRegistryPanel({
                     ? `${formatCoordinate(device.lat)}, ${formatCoordinate(device.lon)}`
                     : 'n/a'}
                 </td>
+                <td>{renderLastSync(device)}</td>
+                <td>{renderBatteryState(device)}</td>
                 <td className="align-right">
                   <div className="admin-icon-actions">
-                    <button type="button" className="icon-button" title="Initialize device" onClick={() => onInit(device.id)}>
-                      <RefreshCw size={16} />
-                    </button>
                     <button type="button" className="icon-button" title="Open audio records" onClick={() => onOpenAudio(device.id)}>
                       <AudioLines size={16} />
                     </button>

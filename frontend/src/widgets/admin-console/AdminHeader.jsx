@@ -21,7 +21,7 @@ export function AdminHeader({
     <Panel className={cx('admin-header', className)} tone="strong">
       <div className="admin-header__topline">
         <div className="admin-header__title-group">
-          <div className="dashboard-header__eyebrow">Integrated admin console</div>
+          <div className="admin-header__eyebrow">Integrated admin console</div>
           <h1>Registry, incident operations, and record cleanup</h1>
           <p>
             Device provisioning, suspicious incident review, peak cleanup, and audio archive access
