@@ -1,0 +1,59 @@
+@startuml
+title City Audio Monitor - ogolna architektura systemu
+caption Schemat pokazuje urzadzenia embedded, aplikacje mobilna, backend i frontend na VPS.
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam componentStyle rectangle
+skinparam defaultFontName Arial
+skinparam ArrowColor #2E4057
+skinparam ComponentBorderColor #2E4057
+skinparam ComponentBackgroundColor #F7FAFC
+skinparam DatabaseBorderColor #2E4057
+skinparam DatabaseBackgroundColor #F3F7EF
+skinparam NodeBorderColor #2E4057
+skinparam NodeBackgroundColor #F7FAFC
+
+actor "Operator / administrator" as Operator
+
+node "Urzadzenie embedded\nRaspberry Pi Pico 2 W" as Embedded {
+  component "Mikrofon I2S\n+ detekcja impulsow" as EmbeddedMic
+  component "Bufor audio\nSD / RAM" as EmbeddedBuffer
+  component "Synchronizacja czasu" as EmbeddedTime
+  component "Raport stanu\nbateria, Wi-Fi, mikrofon" as EmbeddedHealth
+}
+
+node "Aplikacja mobilna\nAndroid / wearables" as Mobile {
+  component "Detekcja zdarzen\nna telefonie lub zegarku" as MobileDetection
+  component "Wysylka zdarzen\njak urzadzenie embedded" as MobileUpload
+}
+
+cloud "Internet / siec miejska" as Internet
+
+node "VPS - serwer projektu" as VPS {
+  component "Nginx gateway\nHTTP/HTTPS" as Gateway
+  component "Frontend React\nmapa + panel admina" as Frontend
+  component "Backend FastAPI\nAPI /api" as Backend
+  database "PostgreSQL + PostGIS\nurzadzenia, zdarzenia,\nincydenty, health, time sync" as Database
+  folder "Storage audio\nfragmenty zdarzen" as Storage
+}
+
+Operator --> Frontend : obsluga przez przegladarke
+Frontend --> Gateway : zapytania web/API
+Gateway --> Frontend : statyczna aplikacja web
+Gateway --> Backend : reverse proxy /api
+
+Embedded --> Internet : Wi-Fi
+Mobile --> Internet : LTE/Wi-Fi
+Internet --> Gateway : zadania HTTP/HTTPS
+
+Embedded --> Backend : rejestracja zdarzen,\nsynchronizacja czasu,\nraporty stanu,\nwysylka audio
+Mobile --> Backend : ten sam model API\nco embedded
+
+Backend --> Database : zapis i odczyt danych
+Backend --> Storage : zapis audio zdarzenia
+Backend --> Backend : grupowanie peakow\n+ triangulacja TDOA
+Backend --> Frontend : lista czujnikow,\nincydenty, status urzadzen
+
+@enduml

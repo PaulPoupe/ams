@@ -1,0 +1,90 @@
+@startuml
+title City Audio Monitor - logika backendu
+caption FastAPI na VPS obsluguje urzadzenia, synchronizacje czasu, health reports, zdarzenia dzwiekowe i incydenty.
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam activity {
+  BackgroundColor #F7FAFC
+  BorderColor #2E4057
+  DiamondBackgroundColor #FFF8E5
+  DiamondBorderColor #8A6D1D
+  StartColor #2E4057
+  EndColor #2E4057
+}
+
+start
+
+partition "VPS / Nginx" {
+  :Przyjecie zadania HTTP/HTTPS;
+  if (Sciezka zaczyna sie od /api?) then (tak)
+    :Przekazanie zadania do FastAPI;
+  else (nie)
+    :Zwrocenie frontend React;
+    stop
+  endif
+}
+
+partition "FastAPI backend" {
+  :Walidacja requestu i schematow Pydantic;
+
+  if (Endpoint urzadzen?) then (devices)
+    :Rejestracja, odczyt, aktualizacja\nlub usuniecie urzadzenia;
+    :Zapis lokalizacji w PostGIS;
+    :Dolaczenie ostatniego health report\ni ostatniej synchronizacji czasu;
+
+  elseif (Synchronizacja czasu?) then (time sync)
+    :Sprawdzenie, czy urzadzenie istnieje;
+    :Zapis zdarzenia synchronizacji;
+    :Zwrot timestampow serwera\ni strefy Europe/Warsaw;
+
+  elseif (Raport health?) then (health)
+    :Sprawdzenie, czy urzadzenie istnieje;
+    :Zapis firmware version, uptime,\nWi-Fi, mikrofonu, INA219, napiec i mocy;
+    :Zwrot zapisanego raportu;
+
+  elseif (Nowe zdarzenie dzwiekowe?) then (sound event)
+    :Sprawdzenie, czy urzadzenie istnieje;
+    :Utworzenie Peak z czasem event_time_ns;
+    :Utworzenie SoundEvent z metadanymi detekcji;
+    :Uruchomienie process_recent_peaks;
+
+    if (Sa co najmniej 3 peaki\nz roznych urzadzen w oknie czasu?) then (tak)
+      :Pobranie wspolrzednych mikrofonow z PostGIS;
+      :Konwersja WGS84 -> uklad metryczny;
+      :Triangulacja TDOA\nleast_squares + predkosc dzwieku 343 m/s;
+      :Konwersja wyniku do WGS84;
+      :Zapis SuspiciousIncident;
+      :Oznaczenie peakow jako przetworzonych;
+    else (nie)
+      :Oczekiwanie na kolejne zdarzenia;
+    endif
+
+  elseif (Upload audio dla zdarzenia?) then (audio)
+    :Odczyt surowych bajtow z body;
+    :Zapis pliku .wav lub .pcm16\nw storage/audio/events;
+    :Oznaczenie SoundEvent jako audio_uploaded;
+    :Zwrot linku do pobrania audio;
+
+  elseif (Incydenty podejrzane?) then (incidents)
+    :Lista, odczyt, utworzenie\nlub usuniecie incydentow;
+    :Wspolrzedne przechowywane w PostGIS;
+
+  else (inne)
+    :Zwrot bledu 404/422;
+  endif
+}
+
+partition "PostgreSQL + PostGIS" {
+  :Trwaly zapis urzadzen,\npeakow, sound events,\nhealth reports, time sync events i incydentow;
+}
+
+partition "Frontend" {
+  :Pobranie listy czujnikow,\nstatusow i incydentow;
+  :Prezentacja na mapie operatora\ni w panelu administracyjnym;
+}
+
+stop
+
+@enduml

@@ -1,0 +1,90 @@
+@startuml
+title City Audio Monitor - logika urzadzenia embedded
+caption Logika firmware Pico 2 W: start, synchronizacja, nasluch, health report i obsluga wykrytego zdarzenia.
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam activity {
+  BackgroundColor #F7FAFC
+  BorderColor #2E4057
+  DiamondBackgroundColor #FFF8E5
+  DiamondBorderColor #8A6D1D
+  StartColor #2E4057
+  EndColor #2E4057
+}
+
+start
+
+:Inicjalizacja stdio i krotkie opoznienie startowe;
+:Uruchomienie pomiaru zasilania INA219;
+:Sprawdzenie konsoli USB;
+:Wczytanie konfiguracji urzadzenia\nWi-Fi, ID urzadzenia, adres serwera VPS, progi audio;
+:Reset wyswietlacza e-paper;
+
+if (Konfiguracja znaleziona?) then (tak)
+  :Wybor trybu pracy\nnormalny / diagnostyczny;
+else (nie)
+  :Pokazanie bledu na wyswietlaczu Inky;
+  :Praca tylko w trybie ograniczonym\nlub diagnostycznym;
+endif
+
+:Inicjalizacja diagnostyki;
+:Publikacja lokalnego statusu runtime;
+
+if (Inicjalizacja sieci OK?) then (tak)
+  :Polaczenie z Wi-Fi z ponowieniami;
+else (nie)
+  :Oznaczenie bledu sieci;
+  stop
+endif
+
+:Reset lokalnego zegara;
+:Inicjalizacja klienta synchronizacji czasu;
+:Inicjalizacja klienta raportow health;
+:Poczatkowa synchronizacja czasu z backendem na VPS;
+:Uspienie Wi-Fi w celu oszczedzania energii;
+:Inicjalizacja audio\nmikrofon I2S, kolejka probek, detektor zdarzen;
+:Oznaczenie mikrofonu jako aktywnego;
+
+:Wejscie do petli glownej;
+
+repeat
+  :Petla glowna urzadzenia;
+  :Aktualizacja runtime status\nbateria, Wi-Fi, mikrofon, kolejka audio;
+  :Pobranie pakietow audio z kolejki;
+  :Analiza lokalna sygnalu\npeak, mean, noise floor;
+
+  if (Wykryto gwaltowny dzwiek?) then (tak)
+    :Zapamietanie czasu UTC zdarzenia;
+    :Zachowanie parametrow detekcji;
+    :Odczekanie okna post-capture\nna fragment audio;
+    :Polaczenie z Wi-Fi;
+    :Przygotowanie wysylki metadanych zdarzenia\n/api/devices/{id}/sound-events;
+    :Przygotowanie wysylki fragmentu audio\njesli jest dostepny;
+    :Uspienie Wi-Fi;
+  else (nie)
+    :Kontynuacja nasluchu;
+  endif
+
+  if (Czas na ponowna synchronizacje?) then (tak)
+    :Polaczenie z Wi-Fi;
+    :Pobranie czasu z backendu na VPS;
+    :Aktualizacja lokalnego zegara;
+    :Uspienie Wi-Fi;
+  endif
+
+  if (Czas na raport health?) then (tak)
+    :Polaczenie z Wi-Fi;
+    :Wyslanie raportu stanu\nbateria, INA219, Wi-Fi, mikrofon, kolejka audio;
+    :Uspienie Wi-Fi;
+  endif
+
+  if (Brak przetworzonych probek?) then (tak)
+    :Sleep 2 ms;
+  endif
+repeat while (Urzadzenie wlaczone?) is (tak) not (nie)
+
+stop
+
+@enduml
